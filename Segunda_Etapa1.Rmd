@@ -1,0 +1,168 @@
+---
+title: "Consumo de cerveja"
+author: "Stella Trajano"
+date: "20/04/2021"
+output: html_document
+---
+
+Quantos litros de cerveja em média são consumidos em um fim de semana? Faça chuva ou faça sol, a gelada se faz igualmente presente? Temperatura subiu, um litrão cai bem? As respostas para tais questionamentos vão ser deduzidas através de uma base de dados com 365 observações sobre temperatura, precipitação e consumo de cerveja.
+
+### Processo de carregamento de dados e pacotes
+
+```{r Pacotes, message=FALSE, warning=FALSE}
+library(dplyr)
+library(car)
+library(rstatix)                                
+library(emmeans)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(htmltools)
+library(lubridate)
+```
+
+* Importando a base de dados e recodificando a variável Final de semana
+```{r Leitura}
+dados <- read.csv2('consumo_cerveja.csv')
+dados$Final.de.Semana <- factor(dados$Final.de.Semana,
+                                levels = c(0,1),
+                                labels = c("Dia de semana", "Fim de Semana"))
+```
+
+* Criando uma tabela mais organizada dos dados
+```{r Visualização}
+kableExtra::kable(head(dados, 10), col.names = c("Data","Temperatura média", "Temperatura mínima", "Temperatura máxima", "Precipitação","Final de semana","Consumo de cerveja")) %>%
+  kableExtra::kable_styling(full_width = F, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+
+### Descrição dos dados  
+
+O banco contém `r nrow(dados)` observações, as quais são referentes aos dias em que foram anotados o consumo de cerveja por litro durante 1 ano, sendo `r nrow(dados[which(dados$Final.de.Semana == "Fim de Semana"),])` dessas obeservações, fins de semana.  
+
+* Calculando as estatísticas do banco de dados
+```{r valores}
+mean(dados$Consumo.de.cerveja..litros.)
+summary(dados$Temperatura.Media..C.)
+mean(dados$Precipitacao..mm.)
+```
+
+As médias calculadas mostram que apesar de não chover muito (em média 5.198 mm ao dia), a temperatura média por dia é de 21.37°C, o que não é considerado uma temperatura elevada. O mesmo não pode se dizer do consumo de cerveja, o qual alcança uma média de 25,401.37 litros por dia.  
+
+* Gerando gráfico de dispersão  
+
+```{r Gráfico 1}
+ggplot(dados,
+       aes(x = Precipitacao..mm., y = Consumo.de.cerveja..litros., color = Consumo.de.cerveja..litros.)) +
+  geom_point() +
+  xlab("Quantidade de precipitação por dia (mm)") +
+  ylab("Quantidade de cerveja consumida por dia (L)")
+  
+```  
+  
+  
+Cada ponto do gráfico é referente a um dia do ano. A concentração no primeiro quartil mostra que não houveram tantos dias chuvosos ao longo do ano. Podemos observar também que o dia com maior consumo é o um dia sem chuva. O que não podemos afirmar é que o tempo está diretamente ligado ao consumo de cerveja, para isso é preciso avaliar a correlação das variáveis. Calculando a correlação, temos o valor `r cor (dados$Precipitacao..mm.,dados$Consumo.de.cerveja..litros.)` o que nos mostra que um dia chuvoso não interfere diretamente no quanto as pessoas desta cidade se afogam, ou não, num copo de cerveja.
+
+* Tabela mostrando média de consumo de cerveja por dia 
+```{r Tabela 1}
+ConsumoPorDia <- dados %>% 
+  group_by(Final.de.Semana)%>% summarise(
+    mean(Consumo.de.cerveja..litros., na.rm = T))
+
+kable(ConsumoPorDia, col.names = c("Dia","Consumo médio de cerveja")) %>%
+  kable_styling(full_width = F, bootstrap_options = c("striped", "hover", "condensed", "responsive")) 
+
+```
+<br>
+
+A tabela mostra que existe um aumento considerável (por volta de 5 mil litros) de consumo de cerveja nos fins de semana.O que pode ser melhor obeservado através do gráfico a seguir:
+
+
+```{r}
+
+ggplot(dados, aes(x = Final.de.Semana, y = Consumo.de.cerveja..litros., fill = Final.de.Semana)) +
+  geom_boxplot() +
+  xlab("Dia") +
+  ylab("Consumo de cerveja por dia (L)") +
+  scale_fill_manual("Dia",values=c("deepskyblue4","lightblue"))
+```  
+
+O bloxplot confirma o maior consumo de cerveja aos fins de semana. É notável três dias de semana em que as pessoas consumiram muito além do comum, o que pode indicar a presença de feriados.
+
+* Código para mudar o formato da variável data que se encontrava como character para formato de dia, mês e ano.
+
+```{r reorganizando a variável data}
+dados$Data = dmy(paste(dados$Data))
+```  
+
+* Agrupando variável "Temperatura média" por "Data", separando em grupos de quatro estações.
+```{r Agrupando por mês}
+TemperaturaAoAno <- dados %>% 
+  group_by(Data)%>% summarise(
+    mean(Temperatura.Media..C., na.rm = T))
+
+estacao1 <- TemperaturaAoAno[TemperaturaAoAno$Data >= "2019-01-01" & TemperaturaAoAno$Data <= "2019-02-28",]
+
+estacao1 <- rbind(estacao1,TemperaturaAoAno[TemperaturaAoAno$Data >= "2019-12-01" & TemperaturaAoAno$Data <= "2019-12-31",])
+
+estacao2 <- TemperaturaAoAno[TemperaturaAoAno$Data >= "2019-03-01" & TemperaturaAoAno$Data <= "2019-05-31",]
+
+estacao2[is.na(estacao2)] <- 0
+
+estacao3 <- TemperaturaAoAno[TemperaturaAoAno$Data >= "2019-06-01" & TemperaturaAoAno$Data <= "2019-08-30",]
+
+estacao4 <- TemperaturaAoAno[TemperaturaAoAno$Data >= "2019-09-01" & TemperaturaAoAno$Data <= "2019-11-30",]
+```  
+
+* Criando uma tabela com a temperatura média por dia para cada estação
+```{r média de temperatura na estação}
+estacoes <- data.frame(
+  c("Estação 1", "Estação 2", "Estação 3", "Estação 4"),
+  
+  c(mean(estacao1$`mean(Temperatura.Media..C., na.rm = T)`), mean(estacao2$`mean(Temperatura.Media..C., na.rm = T)`), mean(estacao3$`mean(Temperatura.Media..C., na.rm = T)`), mean(estacao4$`mean(Temperatura.Media..C., na.rm = T)`))
+)
+
+kable(estacoes, col.names = c("Estação","Temperatura Média")) %>%
+  kableExtra::kable_styling(full_width = F, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+```  
+
+A tabela nos apresenta a estação 1 com maior média de temperatura por dia, diferente da estação 3, a qual nos traz a menor temperatura média apresentada (18.56ºC). Sendo assim, iremos denomina-las, respectivamente, de verão e inverno. A seguir, será feita a análise sobre em qual das duas estações há maior consumo de cerveja.
+
+* Criando dataframe com coluna recodificada por nome da estação
+```{r consumo por estação}
+ConsumoEstacao <- dados %>% 
+  group_by(Data)%>% summarise(
+    mean(Consumo.de.cerveja..litros., na.rm = T))
+
+verao <- ConsumoEstacao[ConsumoEstacao$Data >= "2019-01-01" & ConsumoEstacao$Data <= "2019-02-28",]
+
+verao <- rbind(verao,ConsumoEstacao[ConsumoEstacao$Data >= "2019-12-01" & ConsumoEstacao$Data <= "2019-12-31",])
+
+verao$Data = "verão"
+
+inverno <-ConsumoEstacao[ConsumoEstacao$Data >= "2019-06-01" & ConsumoEstacao$Data <= "2019-08-30",]
+
+inverno$Data = "inverno"
+
+```  
+
+
+* Criando tabela com para explicitar a diferença do consumo de cervejas no verão e inverno
+
+```{r tabela}
+Consumo_estacao <- data.frame(
+  c("Verão","Inverno"),
+  c(mean(verao$`mean(Consumo.de.cerveja..litros., na.rm = T)`), mean(inverno$`mean(Consumo.de.cerveja..litros., na.rm = T)`))
+)
+kable(Consumo_estacao, col.names = c("Estação","Consumo médio")) %>%
+  kableExtra::kable_styling(full_width = F, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+```  
+A tabela mostra que há uma diferença entre o consumo no verão e inverno. Cerca de 3 mil litros são consumidos a mais durante o verão, o que nos leva a crer que o calor do momento tem pouca interferência no consumo da bebida que aquece corações. 
+
+
+
+
+
+
